@@ -78,6 +78,7 @@ var CFG=[
 {name:'招商银行',code:'600036',mkt:1,div:2.016,buy:37,cat:'大金融',roe:14.8,divHist:['1.52','1.74','1.97','2.00','2.02'],earn:'2026-08-22',divDt:'2027-01-15',cfo:1970,fcf:1180,cov:3.9,safe:'🟢安全'},
 {name:'农业银行',code:'601288',mkt:1,div:0.20,buy:4,cat:'大金融',roe:11,divHist:['0.17','0.18','0.19','0.19','0.20'],earn:'2026-10-30',divDt:'2027-06-15',cfo:13000,fcf:7000,cov:5.0,safe:'🟢安全'},
 {name:'中国平安',code:'601318',mkt:1,div:2.70,buy:50,cat:'大金融',roe:12.5,divHist:['2.50','2.55','2.55','2.55','2.70'],earn:'2026-08-28',divDt:'2026-10-20',cfo:1680,fcf:850,cov:3.4,safe:'🟢安全'},
+{name:'平安银行',code:'000001',mkt:0,div:0.596,buy:11,cat:'大金融',roe:9.15,divHist:['0.23','0.29','0.72','0.61','0.60'],earn:'2026-10-25',divDt:'2026-10-15',cfo:3159,fcf:1900,cov:3.7,safe:'🟢安全'},
 {name:'中国人寿',code:'601628',mkt:1,div:0.65,buy:30,cat:'大金融',roe:9,divHist:['0.50','0.55','0.60','0.63','0.65'],earn:'2026-10-28',divDt:'2027-05-20',cfo:4200,fcf:2000,cov:3.2,safe:'🟢安全'},
 {name:'长江电力',code:'600900',mkt:1,div:0.943,buy:25,cat:'公用事业',roe:15,divHist:['0.82','0.85','0.82','0.94','0.98'],earn:'2026-10-30',divDt:'2026-12-15',cfo:628,fcf:120,cov:2.5,safe:'🟢安全'},
 {name:'国电电力',code:'600795',mkt:1,div:0.08,buy:3.5,cat:'公用事业',roe:7,divHist:['0.05','0.06','0.07','0.08','0.08'],earn:'2026-10-28',divDt:'2027-05-15',cfo:350,fcf:-100,cov:1.0,safe:'🟡中等'},
@@ -101,6 +102,7 @@ var holdings={};try{holdings=JSON.parse(localStorage.getItem('vc_holdings')||'{}
 var enabled={};try{enabled=JSON.parse(localStorage.getItem('ve')||'{}')}catch(e){enabled={}}
 var saw=localStorage.getItem('ve_seen');
 if(!saw){for(var i=0;i<CFG.length;i++)enabled[CFG[i].code]=false;enabled['600036']=true;enabled['601318']=true;saveE()}
+else{var ad=false;for(var i=0;i<CFG.length;i++){var cd=CFG[i].code;if(!(cd in enabled)){enabled[cd]=(cd==='000001');ad=true;}}if(ad)saveE();}
 function saveE(){localStorage.setItem('ve',JSON.stringify(enabled));localStorage.setItem('ve_seen','1')}
 function active(){return CFG.filter(function(c){return enabled[c.code]})}
 function getSD(code){for(var i=0;i<data.length;i++)if(data[i].code===code)return data[i];return null}
@@ -183,6 +185,7 @@ function renderAll(){
     sv+='<polygon points="'+(cp-4)+'%,0 '+(cp+4)+'%,0 '+cp.toFixed(2)+'%,18" fill="#e74c3c" stroke="#fff" stroke-width="1"/><rect x="'+lx.toFixed(2)+'%" y="2" width="'+lw.toFixed(2)+'%" height="16" rx="2" fill="#e74c3c"/><text x="'+((lx+lw/2)).toFixed(2)+'%" y="14" font-size="11" font-weight="800" fill="#fff" text-anchor="middle">'+r.price.toFixed(2)+'</text><line x1="'+cp.toFixed(2)+'%" y1="18" x2="'+cp.toFixed(2)+'%" y2="31" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="2,2"/></svg>';
     var bs='',rv2=null,np2=null;
     if(r.code==='600036'){rv2=[3313,3448,3391,3375,3300];np2=[1200,1380,1466,1484,1502];}
+    else if(r.code==='000001'){rv2=[1694,1799,1647,1467,1314];np2=[363,455,465,445,426];}
     else if(r.code==='601398'){rv2=[8000,8200,7900,7800,7700];np2=[3400,3500,3600,3580,3650];}
     else if(r.code==='601939'){rv2=[7500,7700,7400,7300,7200];np2=[3100,3300,3400,3350,3320];}
     else if(r.code==='601318'){rv2=[11800,12200,9700,10300,11400];np2=[1016,838,857,1267,1520];}
