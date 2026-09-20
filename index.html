@@ -71,6 +71,18 @@ header .st{font-size:11px;color:var(--sub);margin-top:2px}
 .boll-hint{font-size:9px;color:var(--sub);margin-top:6px;line-height:1.6}
 .boll-src{font-size:9px;color:var(--sub);margin-top:4px;text-align:right}
 .boll-svg{width:100%;display:block;margin-top:6px}
+.lg-wrap{margin-top:5px;padding-top:5px;border-top:1px dashed #e8eaf0}
+.lg-top{display:flex;justify-content:space-between;align-items:center;font-size:9px;color:var(--sub);margin-bottom:3px}
+.lg-pace{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px}
+.lg-track{position:relative;height:12px}
+.lg-range{position:absolute;top:4px;left:0;right:0;height:5px;border-radius:3px;background:#e8eef7}
+.lg-mid{position:absolute;top:1px;width:2px;height:11px;background:#a8b4c8}
+.lg-dot{position:absolute;top:0;width:7px;height:7px;border-radius:50%;border:1.5px solid #fff;transform:translateX(-50%)}
+.lg-axis{display:flex;justify-content:space-between;font-size:9px;color:var(--sub);margin-top:3px}
+.lg-nums{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:4px}
+.lg-nums .n{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:4px 2px;text-align:center}
+.lg-nums .n .v{font-size:11px;font-weight:700}
+.lg-nums .n .k{font-size:8px;color:var(--sub);margin-top:1px}
 </style>
 </head>
 <body>
@@ -189,21 +201,48 @@ function maOf(closes,p){
   return s/p;
 }
 function txSym(mkt,code){return (String(mkt)==='1'?'sh':'sz')+code}
+// 250日参数：交易日约 250 天/年
+var LONG_N=250;
+// 长期位置：250日均线偏离 + 250日区间分位（与布林带同源，一次请求算完）
+function calcLong(rows){
+  if(!rows||rows.length<LONG_N)return null;
+  var win=rows.slice(-LONG_N),i,s=0;
+  for(i=0;i<win.length;i++)s+=win[i].close;
+  var ma=s/win.length;
+  var hi=-Infinity,lo=Infinity;
+  for(i=0;i<win.length;i++){
+    if(win[i].high>hi)hi=win[i].high;
+    if(win[i].low<lo)lo=win[i].low;
+  }
+  var last=rows[rows.length-1].close;
+  var dev=(last/ma-1)*100;
+  var pos=(hi>lo)?((last-lo)/(hi-lo)*100):50;
+  return{ma:ma,ma250:ma,high:hi,low:lo,dev:dev,pos:pos,price:last,
+    hiDate:win[win.length-1].date,loDate:win[0].date,bars:rows.length};
+}
+// 偏离度 → 定投节奏建议（阈值与页面说明严格一致）
+function dcaPace(dev){
+  if(dev<=-10)return{t:'加倍投',c:'#1e8449',bg:'#e8f8ee'};
+  if(dev<=-3)return{t:'正常投',c:'#1e8449',bg:'#eef8f1'};
+  if(dev<=5)return{t:'正常投',c:'#b8860b',bg:'#fffbe8'};
+  return{t:'减半投',c:'#c0392b',bg:'#fdeeee'};
+}
 // 日K：腾讯前复权（qfq，与东财 fqt=1 口径一致），带内存缓存
 var _klineCache={};
 async function fetchCloses(mkt,code){
   var key=mkt+'.'+code;
   if(_klineCache[key]&&(Date.now()-_klineCache[key].t)<300000)return _klineCache[key].v;
   var sym=txSym(mkt,code);
-  var u='https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+sym+',day,,,40,qfq&_t='+Date.now();
+  var u='https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+sym+',day,,,260,qfq&_t='+Date.now();
   var r=await fetch(u,{cache:'no-store'});
   if(!r.ok)throw new Error('kline http '+r.status);
   var j=await r.json(),d=j&&j.data&&j.data[sym];
   if(!d)throw new Error('kline empty');
   var arr=d.qfqday||d.day;
   if(!arr||arr.length<BOLL_N)throw new Error('kline bars '+(arr?arr.length:0));
-  var closes=arr.map(function(row){return parseFloat(row[2])});
-  var v={closes:closes,date:arr[arr.length-1][0],source:'tencent'};
+  var rows=arr.map(function(row){return{date:row[0],close:parseFloat(row[2]),high:parseFloat(row[3]),low:parseFloat(row[4])}});
+  var closes=rows.map(function(x){return x.close});
+  var v={closes:closes,rows:rows,date:arr[arr.length-1][0],source:'tencent'};
   _klineCache[key]={t:Date.now(),v:v};
   return v;
 }
@@ -219,9 +258,9 @@ async function load(){
   var lst=active();
   if(lst.length===0){document.getElementById('time').textContent='⚠️ 请先在设置页勾选股票';return;}
   var pm=lst.map(function(c){return fo(c.mkt,c.code).then(function(raw){
-    var rw={name:c.name,code:c.code,cat:c.cat,div:c.div,buy:c.buy,roe:c.roe,divHist:c.divHist,earn:c.earn,divDt:c.divDt,cfo:c.cfo,fcf:c.fcf,cov:c.cov,safe:c.safe,price:0,prev:0,chg:0,pe:0,pb:0,mcap:0,divR:0,dist:0,needy:0,ok:false,boll:null,buyZone:null,target:0,bollSrc:null};
+    var rw={name:c.name,code:c.code,cat:c.cat,div:c.div,buy:c.buy,roe:c.roe,divHist:c.divHist,earn:c.earn,divDt:c.divDt,cfo:c.cfo,fcf:c.fcf,cov:c.cov,safe:c.safe,price:0,prev:0,chg:0,pe:0,pb:0,mcap:0,divR:0,dist:0,needy:0,ok:false,boll:null,buyZone:null,target:0,bollSrc:null,long:null};
     if(raw&&raw.f43){rw.price=raw.f43;rw.prev=raw.f60||0;rw.chg=rw.prev>0?(rw.price/rw.prev-1)*100:0;rw.pe=raw.f162||0;rw.pb=raw.f167||0;rw.mcap=(raw.f116||0)/1e8;rw.divR=c.div/rw.price*100;rw.ok=true;}
-    // 并行拉日K算布林（失败不影响行情）
+    // 并行拉日K算布林 + 250日长期位置（失败不影响行情）
     return fetchCloses(c.mkt,c.code).then(function(kr){
       var closes=kr.closes,b=calcBoll(closes);
       if(b){
@@ -232,6 +271,9 @@ async function load(){
         rw.target=z?z.low:c.buy;
         rw.bollSrc=kr.source;
       }else{rw.target=c.buy;}
+      // 250日长期位置（需要满 250 根，不足则为空）
+      var lg=calcLong(kr.rows);
+      if(lg){lg.pace=dcaPace(lg.dev);rw.long=lg;}
       if(rw.ok){rw.dist=(rw.price-rw.target)/rw.target*100;rw.needy=rw.target-rw.price;}
       return rw;
     }).catch(function(){
@@ -284,6 +326,70 @@ function bollBlock(r){
   '</div>';
 }
 
+// ═══ 250日长期位置完整区块（个股详情用）═══
+function longBlock(r){
+  var g=r.long;
+  if(!g)return '<div class="dl-section"><h4>📍 250日长期位置</h4><div style="font-size:10px;color:var(--sub);padding:6px;background:var(--card);border-radius:4px">日K样本不足 250 根（当前 '+(r.boll?r.boll.bars:0)+' 根），无法计算。新股或数据源受限时会出现。</div></div>';
+  var lo=g.low,hi=g.high,p=r.price;
+  var pos=function(v){var t=(v-lo)/(hi-lo)*100;return Math.max(0,Math.min(100,t))};
+  var pPct=pos(p),mPct=pos(g.ma);
+  var dotC=g.pos<30?'#27ae60':(g.pos<70?'#e67e22':'#e74c3c');
+  var posHint=g.pos<30?'年内低位区（相对便宜）':(g.pos<70?'年内中位区':'年内高位区（相对偏贵）');
+  var devHint=g.dev<0?'现价低于250日均线，趋势偏弱':'现价高于250日均线，趋势偏强';
+  var pc=g.pace;
+  var lv=g.dev<=-10?'极低估':(g.dev<=-3?'偏低估':(g.dev<=5?'合理':'偏高'));
+  return '<div class="dl-section"><h4>📍 250日长期位置</h4>'+
+    '<div class="boll-track">'+
+      '<div class="boll-band" style="left:0%;width:100%;background:#e8eef7"></div>'+
+      '<div class="boll-midline" style="left:'+mPct.toFixed(2)+'%"></div>'+
+      '<div class="boll-pin" style="left:'+pPct.toFixed(2)+'%;background:'+dotC+'"></div>'+
+      '<div class="boll-pin-lb" style="left:'+pPct.toFixed(2)+'%">¥'+p.toFixed(2)+'</div>'+
+    '</div>'+
+    '<div class="boll-axis"><span>年内低 '+lo.toFixed(2)+'</span><span>250均线 '+g.ma.toFixed(2)+'</span><span>年内高 '+hi.toFixed(2)+'</span></div>'+
+    '<div class="boll-zone" style="background:'+pc.bg+'">'+
+      '<div class="zl" style="color:'+pc.c+'">📊 定投节奏建议：'+pc.t+'</div>'+
+      '<div class="zv" style="color:'+pc.c+'">'+(g.dev>=0?'+':'')+g.dev.toFixed(2)+'%</div>'+
+      '<div class="zs">偏离250日均线 · '+devHint+'</div>'+
+    '</div>'+
+    '<div class="boll-grid">'+
+      '<div class="bg"><div class="v" style="color:'+dotC+'">'+g.pos.toFixed(1)+'%</div><div class="k">年内位置</div></div>'+
+      '<div class="bg"><div class="v">'+g.ma.toFixed(2)+'</div><div class="k">250日均线</div></div>'+
+      '<div class="bg"><div class="v">'+g.bars+'</div><div class="k">样本天数</div></div>'+
+    '</div>'+
+    '<div class="boll-hint">当前档位：<b style="color:'+pc.c+'">'+lv+'</b>（'+posHint+'）<br>'+
+    '口径：250日 ≈ 一年交易日。位置 = (现价−年内低) ÷ (年内高−年内低)；偏离 = 现价 ÷ 250日均线 − 1。<br>'+
+    '节奏参考：偏离 &lt;−10% 加倍投 ｜ −10%~−3% 正常投 ｜ −3%~+5% 正常投 ｜ &gt;+5% 减半投（不停投）。<br>'+
+    '⚠️ 本指标只描述价格位置，不含估值判断——位置低不等于便宜，需结合股息率分位一起看。</div>'+
+    '<div class="boll-src">区间 ' + g.loDate + ' ~ ' + g.hiDate + ' · tencent</div>'+
+  '</div>';
+}
+
+// ═══ 250日长期位置迷你条（首页卡片用）═══
+function longMini(r){
+  var g=r.long;
+  if(!g)return '';
+  var lo=g.low,hi=g.high,p=r.price;
+  var pos=function(v){var t=(v-lo)/(hi-lo)*100;return Math.max(0,Math.min(100,t))};
+  var pPct=pos(p),mPct=pos(g.ma);
+  // 位置越低越绿（越便宜），越高越红
+  var dotC=g.pos<30?'#27ae60':(g.pos<70?'#e67e22':'#e74c3c');
+  var pc=g.pace;
+  return '<div class="lg-wrap">'+
+    '<div class="lg-top"><span>📍 250日位置</span><span class="lg-pace" style="color:'+pc.c+';background:'+pc.bg+'">'+pc.t+'</span></div>'+
+    '<div class="lg-track">'+
+      '<div class="lg-range"></div>'+
+      '<div class="lg-mid" style="left:'+mPct.toFixed(1)+'%"></div>'+
+      '<div class="lg-dot" style="left:'+pPct.toFixed(1)+'%;background:'+dotC+'"></div>'+
+    '</div>'+
+    '<div class="lg-axis"><span>年内低 '+lo.toFixed(2)+'</span><span>均线 '+g.ma.toFixed(2)+'</span><span>年内高 '+hi.toFixed(2)+'</span></div>'+
+    '<div class="lg-nums">'+
+      '<div class="n"><div class="v" style="color:'+dotC+'">'+(g.pos).toFixed(0)+'%</div><div class="k">年内位置</div></div>'+
+      '<div class="n"><div class="v" style="color:'+(g.dev>=0?'#c0392b':'#27ae60')+'">'+(g.dev>=0?'+':'')+g.dev.toFixed(2)+'%</div><div class="k">偏离均线</div></div>'+
+      '<div class="n"><div class="v">'+g.bars+'</div><div class="k">样本天数</div></div>'+
+    '</div>'+
+  '</div>';
+}
+
 // ═══ 主渲染 ═══
 function renderAll(){
   if(!data||data.length===0)return;
@@ -300,7 +406,7 @@ function renderAll(){
     var bl='';
     if(r.boll){var bl_lo=r.boll.lower,bl_hi=r.boll.upper,bp=Math.max(0,Math.min(100,(r.price-bl_lo)/(bl_hi-bl_lo)*100)),bm=Math.max(0,Math.min(100,(r.boll.ma-bl_lo)/(bl_hi-bl_lo)*100)),bz=r.buyZone,blIn=bz&&r.price<=bz.high;
       bl='<div style="margin-top:5px;padding-top:5px;border-top:1px dashed #e8eaf0"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--sub);margin-bottom:3px"><span>📉 布林带</span><span>下轨'+bl_lo.toFixed(2)+' 上轨'+bl_hi.toFixed(2)+'</span></div><div style="position:relative;height:12px"><div style="position:absolute;top:4px;left:0;right:0;height:5px;border-radius:3px;background:linear-gradient(90deg,#dbe7fb,#e8f0fe)"></div><div style="position:absolute;top:1px;left:'+bm.toFixed(1)+'%;width:2px;height:11px;background:#a8b4c8"></div><div style="position:absolute;top:0;left:'+bp.toFixed(1)+'%;width:7px;height:7px;border-radius:50%;background:var(--red);border:1.5px solid #fff;transform:translateX(-50%);box-shadow:0 0 0 1px rgba(231,76,60,.35)"></div></div>'+(bz?'<div style="font-size:9px;margin-top:3px;font-weight:700;color:'+(blIn?'#1e8449':'#b8860b')+'">买点 '+bz.low.toFixed(2)+'~'+bz.high.toFixed(2)+(blIn?' ✅已进入':'')+'</div>':'')+'</div>';}
-    da+='<div class="dc '+lv+'" data-code="'+r.code+'" onclick="sS(\''+r.code+'\')" style="cursor:pointer;background:'+z.bg+'"><div class="dc-top"><div><span class="name">'+r.name+'</span><span class="code">'+r.code+'</span></div><span class="adv '+ad.cls+'">'+ad.text+'</span></div><div class="dc-p">¥'+r.price.toFixed(2)+' <span class="chip '+(up?'chip-up':'chip-down')+'">'+(up?'+':'')+r.chg.toFixed(2)+'%</span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--sub);margin-top:3px"><span>股息率</span><b style="color:'+cl+'">'+r.divR.toFixed(2)+'%</b></div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+cl+'"></div><div class="bar-dot" style="left:'+pct+'%;background:'+cl+'"></div></div><div style="font-size:10px;margin-top:4px">'+nd+'</div>'+bl+'</div>';}
+    da+='<div class="dc '+lv+'" data-code="'+r.code+'" onclick="sS(\''+r.code+'\')" style="cursor:pointer;background:'+z.bg+'"><div class="dc-top"><div><span class="name">'+r.name+'</span><span class="code">'+r.code+'</span></div><span class="adv '+ad.cls+'">'+ad.text+'</span></div><div class="dc-p">¥'+r.price.toFixed(2)+' <span class="chip '+(up?'chip-up':'chip-down')+'">'+(up?'+':'')+r.chg.toFixed(2)+'%</span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--sub);margin-top:3px"><span>股息率</span><b style="color:'+cl+'">'+r.divR.toFixed(2)+'%</b></div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+cl+'"></div><div class="bar-dot" style="left:'+pct+'%;background:'+cl+'"></div></div><div style="font-size:10px;margin-top:4px">'+nd+'</div>'+bl+longMini(r)+'</div>';}
   da+='</div>';document.getElementById('dash').innerHTML=da;
 
   // 个股
@@ -342,6 +448,7 @@ function renderAll(){
     '<div class="dl-section"><h4>💰 现金流（亿）</h4><div class="mg"><div class="m"><span class="k">经营现金流</span><span class="v">'+r.cfo+'</span></div><div class="m"><span class="k">自由现金流</span><span class="v">'+r.fcf+'</span></div><div class="m"><span class="k">现金/分红倍数</span><span class="v">'+r.cov+'倍</span></div><div class="m"><span class="k">安全评价</span><span class="v">'+r.safe+'</span></div></div></div>'+
     '<div class="dl-section"><h4>🎯 目标价分段</h4><div style="font-size:10px;color:var(--sub);margin-bottom:4px">'+nd2+'·'+ad2+'</div>'+sv+'</div>'+
     bollBlock(r)+
+    longBlock(r)+
     '<div class="dl-section"><h4>📈 分红趋势</h4>'+bdt(r.divHist)+'</div>'+
     '<div class="dl-section"><h4>📅 事件</h4><div style="padding:8px;background:var(--card);border-radius:4px;font-size:11px;color:var(--sub)">📊 财报：'+(r.earn||'—')+' 💵 分红：'+(r.divDt||'—')+'</div></div></div></div>';}
   document.getElementById('detail').innerHTML=dt;
